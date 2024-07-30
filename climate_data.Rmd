@@ -11,9 +11,8 @@ note: Twillingate station is not in use (was in the 1960s)
 janky documentation for the API https://drive.google.com/drive/folders/1WJCDEU34c60IfOnG4rv5EPZ4IhhW9vZH
 Or use weathercan package from ropenSci
 
-```{r twillingate data}
+```{r twillingate data, eval = false}
 library(weathercan)
-library(tidyverse)
 twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-07-30")
 
 #write.csv(twillingate, "twillingate_weather.csv")
@@ -22,8 +21,38 @@ twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-
 visualize the weather changes per year
 
 ```{r weather by year}
+library(tidyverse)
+library(lubridate)
+twillingate <- read.csv('data/twillingate_weather.csv')
+
+#still need to remove inf values for a single month (dec 2022 I think)
 monthly_data<-twillingate %>% 
+  select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
+  group_by(year, month) %>% 
+  summarize(precip_avg = mean(precip_amt, na.rm = TRUE), precip_max = max(precip_amt, na.rm = TRUE), precip_min = min(precip_amt, na.rm = TRUE), 
+            temp_avg = mean(temp, na.rm = TRUE), temp_max = max(temp, na.rm = TRUE), temp_min = min(temp, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(date = with(., sprintf("%d-%02d", year, month))) #not in date format...
   
-ggplot(twillingate)
+ggplot(monthly_data, aes(as.factor(month), temp_avg, color = year)) + geom_point()
+
+ggplot(monthly_data, aes(x = date)) + geom_line(aes(y = temp_avg, group = 1)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
+
+daily_data<-twillingate %>% 
+  select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
+  group_by(year, month, day) %>% 
+  summarize(precip_avg = mean(precip_amt, na.rm = TRUE), precip_max = max(precip_amt, na.rm = TRUE), precip_min = min(precip_amt, na.rm = TRUE), 
+            temp_avg = mean(temp, na.rm = TRUE), temp_max = max(temp, na.rm = TRUE), temp_min = min(temp, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(date = as.Date(with(., paste(year,month,day, sep = '-')))) %>% 
+  filter()
+
+ggplot(daily_data, aes(x = date)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
+
+
+ggplot((daily_data %>% 
+         filter(year == 2024)), aes(x = date)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
+
+#facet by year and look at october to calving or jan to calving, plot avg daily temp per year and look for differences
 ```
 
