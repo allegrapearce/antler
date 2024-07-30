@@ -1,0 +1,29 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+R download climate data from ECCC (for antler paper)
+
+Need data from 2016-2024 for Twillingate AUT (Station ID = 7083, Climate ID = 8404025), hourly/daily.monthly data available
+note: Twillingate station is not in use (was in the 1960s)
+
+janky documentation for the API https://drive.google.com/drive/folders/1WJCDEU34c60IfOnG4rv5EPZ4IhhW9vZH
+Or use weathercan package from ropenSci
+
+```{r twillingate data}
+library(weathercan)
+library(tidyverse)
+twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-07-30")
+
+#write.csv(twillingate, "twillingate_weather.csv")
+```
+
+visualize the weather changes per year
+
+```{r weather by year}
+monthly_data<-twillingate %>% 
+  
+ggplot(twillingate)
+```
+
