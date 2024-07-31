@@ -1,5 +1,5 @@
 ---
-title: "R Notebook"
+title: "Climate Analysis"
 output: html_notebook
 ---
 
@@ -22,7 +22,6 @@ visualize the weather changes per year
 
 ```{r weather by year}
 library(tidyverse)
-library(lubridate)
 twillingate <- read.csv('data/twillingate_weather.csv')
 
 #still need to remove inf values for a single month (dec 2022 I think)
@@ -32,7 +31,8 @@ monthly_data<-twillingate %>%
   summarize(precip_avg = mean(precip_amt, na.rm = TRUE), precip_max = max(precip_amt, na.rm = TRUE), precip_min = min(precip_amt, na.rm = TRUE), 
             temp_avg = mean(temp, na.rm = TRUE), temp_max = max(temp, na.rm = TRUE), temp_min = min(temp, na.rm = TRUE)) %>% 
   ungroup() %>% 
-  mutate(date = with(., sprintf("%d-%02d", year, month))) #not in date format...
+  mutate(date = with(., sprintf("%d-%02d", year, month))) %>% #not in date format...
+  filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
   
 ggplot(monthly_data, aes(as.factor(month), temp_avg, color = year)) + geom_point()
 
@@ -45,7 +45,7 @@ daily_data<-twillingate %>%
             temp_avg = mean(temp, na.rm = TRUE), temp_max = max(temp, na.rm = TRUE), temp_min = min(temp, na.rm = TRUE)) %>% 
   ungroup() %>% 
   mutate(date = as.Date(with(., paste(year,month,day, sep = '-')))) %>% 
-  filter()
+  filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
 
 ggplot(daily_data, aes(x = date)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
 
@@ -54,5 +54,6 @@ ggplot((daily_data %>%
          filter(year == 2024)), aes(x = date)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
 
 #facet by year and look at october to calving or jan to calving, plot avg daily temp per year and look for differences
+ggplot(daily_data, aes(x = month)) + geom_line(aes(y = temp_max, group = as.factor(year), colour = "red")) + geom_line(aes(y = temp_min, group = as.factor(year), colour = "blue"))
 ```
 
