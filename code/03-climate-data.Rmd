@@ -20,40 +20,52 @@ twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-
 
 visualize the weather changes per year
 
-```{r weather by year}
+```{r data prep, include = FALSE}
 library(tidyverse)
 twillingate <- read.csv('data/twillingate_weather.csv')
 
-#still need to remove inf values for a single month (dec 2022 I think)
+#still need to confirm inf values were treated properly
 monthly_data<-twillingate %>% 
   select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
   group_by(year, month) %>% 
-  summarize(precip_avg = mean(precip_amt, na.rm = TRUE), precip_max = max(precip_amt, na.rm = TRUE), precip_min = min(precip_amt, na.rm = TRUE), 
-            temp_avg = mean(temp, na.rm = TRUE), temp_max = max(temp, na.rm = TRUE), temp_min = min(temp, na.rm = TRUE)) %>% 
+  summarize(precip_avg = mean(precip_amt, na.rm = TRUE, .groups = "drop"), precip_max = max(precip_amt, na.rm = TRUE, .groups = "drop"), precip_min = min(precip_amt, na.rm = TRUE, .groups = "drop"), temp_avg = mean(temp, na.rm = TRUE, .groups = "drop"), temp_max = max(temp, na.rm = TRUE, .groups = "drop"), temp_min = min(temp, na.rm = TRUE, .groups = "drop")) %>% 
   ungroup() %>% 
   mutate(date = with(., sprintf("%d-%02d", year, month))) %>% #not in date format...
   filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
-  
+
+#There is probably a better way to apply this to all these columns, mapply?
+daily_data<-twillingate %>% 
+  select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
+  group_by(year, month, day) %>% 
+  summarize(precip_avg = mean(precip_amt, na.rm = TRUE, .groups = "drop"), precip_max = max(precip_amt, na.rm = TRUE, .groups = "drop"), precip_min = min(precip_amt, na.rm = TRUE, .groups = "drop"), 
+            temp_avg = mean(temp, na.rm = TRUE, .groups = "drop"), temp_max = max(temp, na.rm = TRUE, .groups = "drop"), temp_min = min(temp, na.rm = TRUE, .groups = "drop")) %>% 
+  ungroup() %>% 
+  mutate(date = as.Date(with(., paste(year,month,day, sep = '-'))), j_date = as.numeric(format(date, "%j"))) %>% 
+  filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
+```
+
+
+```{r monthly weather}
 ggplot(monthly_data, aes(as.factor(month), temp_avg, color = year)) + geom_point()
 
 ggplot(monthly_data, aes(x = date)) + geom_line(aes(y = temp_avg, group = 1)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
 
-daily_data<-twillingate %>% 
-  select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
-  group_by(year, month, day) %>% 
-  summarize(precip_avg = mean(precip_amt, na.rm = TRUE), precip_max = max(precip_amt, na.rm = TRUE), precip_min = min(precip_amt, na.rm = TRUE), 
-            temp_avg = mean(temp, na.rm = TRUE), temp_max = max(temp, na.rm = TRUE), temp_min = min(temp, na.rm = TRUE)) %>% 
-  ungroup() %>% 
-  mutate(date = as.Date(with(., paste(year,month,day, sep = '-')))) %>% 
-  filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
-
-ggplot(daily_data, aes(x = date)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
+#all years on same axes, monthly data
+ggplot(monthly_data) + geom_line(aes(x = month, y = temp_avg, colour = factor(year))) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb, minor_breaks = NULL) +
+  labs(colour = "Year", y = "Average Monthly Temperature", x = "Month") + scale_color_brewer(palette="RdBu", direction=-1)
+```
 
 
-ggplot((daily_data %>% 
-         filter(year == 2024)), aes(x = date)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
+```{r daily weather data}
+#plot avg daily temp per year and look for differences
+#this is the data we want but it's very hard to compare all the years at once with daily data
+ggplot(daily_data) + geom_line(aes(x = j_date, y = temp_avg, colour = factor(year))) + scale_color_brewer(palette="RdBu", direction=-1)+ scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
 
-#facet by year and look at october to calving or jan to calving, plot avg daily temp per year and look for differences
-ggplot(daily_data, aes(x = month)) + geom_line(aes(y = temp_max, group = as.factor(year), colour = "red")) + geom_line(aes(y = temp_min, group = as.factor(year), colour = "blue"))
+#probably need to more appropriately smooth this
+ggplot(daily_data) + geom_smooth(aes(x = j_date, y = temp_avg, colour = factor(year)), se = FALSE) + scale_color_brewer(palette="RdBu", direction=-1)+ scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
+
+#facet by year and look at october to calving or jan to calving, 
+
 ```
 
