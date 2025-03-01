@@ -11,38 +11,42 @@ note: Twillingate station is not in use (was in the 1960s)
 janky documentation for the API https://drive.google.com/drive/folders/1WJCDEU34c60IfOnG4rv5EPZ4IhhW9vZH
 Or use weathercan package from ropenSci
 
+Do not need to run this everytime.
 ```{r twillingate data, eval = false}
 library(weathercan)
-twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-07-30")
+stations_dl()
+twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-12-31")
 
 #write.csv(twillingate, "twillingate_weather.csv")
 ```
 
 visualize the weather changes per year
-
 ```{r data prep, include = FALSE}
 library(tidyverse)
-twillingate <- read.csv('data/twillingate_weather.csv')
+library(mgcv)
+library(ggplot2)
+library(nlme)
+library(gratia)
 
-#still need to confirm inf values were treated properly
+twillingate <- read.csv('../data/twillingate_weather.csv')
+
 monthly_data<-twillingate %>% 
   select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
   group_by(year, month) %>% 
-  summarize(precip_avg = mean(precip_amt, na.rm = TRUE, .groups = "drop"), precip_max = max(precip_amt, na.rm = TRUE, .groups = "drop"), precip_min = min(precip_amt, na.rm = TRUE, .groups = "drop"), temp_avg = mean(temp, na.rm = TRUE, .groups = "drop"), temp_max = max(temp, na.rm = TRUE, .groups = "drop"), temp_min = min(temp, na.rm = TRUE, .groups = "drop")) %>% 
-  ungroup() %>% 
-  mutate(date = with(., sprintf("%d-%02d", year, month))) %>% #not in date format...
+  summarize(precip_avg = mean(precip_amt, na.rm = F), precip_max = max(precip_amt, na.rm = F), precip_min = min(precip_amt, na.rm = F), temp_avg = mean(temp, na.rm = F), temp_max = max(temp, na.rm = F), temp_min = min(temp, na.rm = F), .groups = "drop") %>% 
+  mutate(date = with(., sprintf("%d-%02d", year, month)), time =`year` - 2024, month = as.integer(month), year = as.integer(year)) %>% #not in date format...
   filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
 
 #There is probably a better way to apply this to all these columns, mapply?
-daily_data<-twillingate %>% 
+#add time as a trend variable
+daily_data <- twillingate %>% 
   select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
   group_by(year, month, day) %>% 
-  summarize(precip_avg = mean(precip_amt, na.rm = TRUE, .groups = "drop"), precip_max = max(precip_amt, na.rm = TRUE, .groups = "drop"), precip_min = min(precip_amt, na.rm = TRUE, .groups = "drop"), 
-            temp_avg = mean(temp, na.rm = TRUE, .groups = "drop"), temp_max = max(temp, na.rm = TRUE, .groups = "drop"), temp_min = min(temp, na.rm = TRUE, .groups = "drop")) %>% 
-  ungroup() %>% 
-  mutate(date = as.Date(with(., paste(year,month,day, sep = '-'))), j_date = as.numeric(format(date, "%j"))) %>% 
+  summarize(precip_avg = mean(precip_amt, na.rm = F), precip_max = max(precip_amt, na.rm = F), precip_min = min(precip_amt, na.rm = F), temp_avg = mean(temp, na.rm = F), temp_max = max(temp, na.rm = F), temp_min = min(temp, na.rm = F), .groups = "drop") %>% 
+  mutate(date = as.Date(with(., paste(year,month,day, sep = '-'))), j_date = as.numeric(format(date, "%j")), time =`year` - 2024, month = as.integer(month), day = as.integer(day), year = as.integer(year)) %>% 
   filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
 ```
+
 
 
 ```{r monthly weather}
@@ -60,12 +64,175 @@ ggplot(monthly_data) + geom_line(aes(x = month, y = temp_avg, colour = factor(ye
 ```{r daily weather data}
 #plot avg daily temp per year and look for differences
 #this is the data we want but it's very hard to compare all the years at once with daily data
-ggplot(daily_data) + geom_line(aes(x = j_date, y = temp_avg, colour = factor(year))) + scale_color_brewer(palette="RdBu", direction=-1)+ scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
+ggplot(daily_data) + geom_line(aes(x = j_date, y = temp_avg, colour = factor(year))) + scale_color_brewer(palette="RdBu", direction=-1) + scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
 
-#probably need to more appropriately smooth this
-ggplot(daily_data) + geom_smooth(aes(x = j_date, y = temp_avg, colour = factor(year)), se = FALSE) + scale_color_brewer(palette="RdBu", direction=-1)+ scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
+#Do I need to more appropriately smooth this? 
+ggplot(daily_data) + geom_smooth(aes(x = j_date, y = temp_avg, colour = factor(year)), se = F) + scale_color_brewer(palette="RdBu", direction=-1) + scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
+
+#2024 has really low precipitation as well as higher temp but 2021 only has higher temp
+ggplot(daily_data) + geom_smooth(aes(x = j_date, y = precip_avg, colour = factor(year)), se = F) + scale_color_brewer(palette="RdBu", direction=-1) + scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Precipitation", x = "Julian Calendar Day")
 
 #facet by year and look at october to calving or jan to calving, 
+
+```
+
+Working on a GAMM to take a look at the differences between years
+
+```{r gamm tries}
+# mutate some variables to date format and create a column to filter to winter data
+daily_data <- daily_data %>%
+  mutate(date = as.Date(date),  # Ensure 'date' is in Date format
+         year = year(date),
+         month = month(date),
+         day = day(date),
+         j_date = yday(date),  # Day of the year
+         winter = ifelse(month %in% c(11:12, 1:5), "winter", "summer"))  # Define winter
+
+winter_data <- daily_data %>% filter(winter == "winter") %>% 
+  mutate(j_date_shifted = ifelse(month >= 11, j_date - 304, j_date + 61)) %>% 
+  filter(!is.na(temp_avg))
+
+# Fit a GAMM with a smooth term for j_date and a random effect for year
+gamm_model <- gamm(
+  temp_avg ~ s(j_date, bs = "cc") + s(year, k = 5),
+  correlation = corARMA(form = ~ j_date | year, p = 1, q = 1),  # ARMA(1,1) structure
+  data = winter_data
+)
+
+# Summary of the model
+summary(gamm_model$gam)
+
+plot(gamm_model$gam, shade = TRUE, pages = 1)
+```
+
+
+
+
+
+Direct comparisons between specific years.
+```{r predicted value tests}
+# Predict temperatures for each year
+predictions <- predict(gamm_model$gam, newdata = winter_data, type = "response", se.fit = TRUE)
+
+# Add predicted values to the data
+winter_data$predicted_temp <- predictions$fit
+winter_data$se <- predictions$se.fit
+
+# Compare predicted temperatures for two specific years
+year1 <- 2017
+year2 <- 2023
+
+temp_year1 <- winter_data %>% 
+  filter(year == year1) %>% 
+  filter(month %in% c(3:5)) %>% 
+  pull(predicted_temp)
+temp_year2 <- winter_data %>% 
+  filter(year == year2) %>% 
+  filter(month %in% c(3:5)) %>%
+  pull(predicted_temp)
+
+# Perform a t-test to compare
+t.test(temp_year1, temp_year2)
+
+# Highlight specific years
+highlight_years <- c(2017, 2023)
+winter_data_highlight <- winter_data %>% filter(year %in% highlight_years)
+
+# Plot with highlighted years
+ggplot(winter_data, aes(x = j_date_shifted, y = predicted_temp, group = year)) +
+  geom_line(color = "gray", alpha = 0.5) +  # All years in gray
+  geom_line(data = winter_data_highlight, aes(color = as.factor(year)), size = 1.2) +  # Highlighted years
+  scale_x_continuous(breaks = x_breaks, labels = x_labels) +
+  labs(
+    title = "Predicted Winter Temperatures (November to May)",
+    x = "Month",
+    y = "Predicted Temperature",
+    color = "Year"
+  ) +
+  theme_minimal()
+```
+Using a simple t-test there is a significant difference in predicted temperature from the first year we did field work and the year we observed early antler growth.
+
+
+start fresh
+
+```{r data prep}
+# Load the dataset (Ensure the file path is correct)
+calving_season_data <- read.csv("twillingate_weather.csv")
+
+# Ensure date columns are properly formatted
+calving_season_data$date <- as.Date(with(calving_season_data, paste(year, month, day, sep="-")), "%Y-%m-%d")
+
+# Assign calving season variable
+calving_season_data$calving_season <- ifelse(calving_season_data$month >= 11,
+                                             paste(calving_season_data$year, calving_season_data$year + 1, sep="/"),
+                                             paste(calving_season_data$year - 1, calving_season_data$year, sep="/"))
+
+# Convert calving season to a factor and set 2022/2023 as the reference level
+calving_season_data$calving_season <- factor(calving_season_data$calving_season, 
+                                             levels = c("2023/2024", sort(unique(calving_season_data$calving_season[calving_season_data$calving_season != "2023/2024"]))))
+
+# Filter for relevant months (Nov–May)
+calving_season_data <- subset(calving_season_data, month %in% c(11, 12, 1, 2, 3, 4, 5))
+
+# Aggregate data to daily values with mean, min, and max temperature
+calving_season_daily <- calving_season_data %>%
+  group_by(date, calving_season) %>%
+  summarise(mean_temp = mean(temp, na.rm = TRUE),
+            min_temp = min(temp, na.rm = TRUE),
+            max_temp = max(temp, na.rm = TRUE),
+            precip_amt = sum(precip_amt, na.rm = TRUE),
+            .groups = 'drop') %>% 
+  filter(!calving_season %in% c("2015/2016", "2024/2025")) #remove incomplete seasons
+
+# Create day of season variable
+calving_season_daily <- calving_season_daily %>%
+  group_by(calving_season) %>%
+  arrange(date) %>%
+  mutate(day_of_season = row_number()) %>%
+  ungroup()
+
+```
+
+
+Fit a gamm model with an interaction between year (calving_season) and time throughout the winter (day_of_season, count of days starting nov 1 to may 31)
+```{r Gamm temp and precip}
+# Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
+gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
+                  data = calving_season_daily, 
+                  family = gaussian(), 
+                  correlation = corAR1(form = ~ day_of_season | calving_season), 
+                  method = "REML")
+
+# Summary of the model
+summary(gam_model$gam)
+
+# still some autocorrelation
+acf(resid(gamm_model$lme), lag.max = 36, main = "ACF")
+pacf(resid(gamm_model$lme), lag.max = 36, main = "pACF")
+
+# Post-hoc test to compare smooth trends across calving seasons
+#difference_smooths(gam_model$gam, partial_match = TRUE, select = "s(day_of_season):calving_season2023/2024")
+
+# Visualization of modeled temperature trends across calving seasons
+plot_data <- expand.grid(
+  day_of_season = seq(1:212),
+  calving_season = unique(calving_season_daily$calving_season),
+  precip_amt = mean(calving_season_daily$precip_amt, na.rm = TRUE))
+
+plot_data <- plot_data %>% 
+  mutate(predicted_temp = 
+           predict(gam_model$gam, newdata = plot_data, type = "response")) %>% 
+  filter(!calving_season %in% c("2019/2020", "2020/2021"))
+
+ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
+  scale_color_manual(values = c("2023/2024" = "darkcyan", "2022/2023" = "pink", "2021/2022" = "salmon", "2018/2019" = "coral", "2017/2018" = "tomato", "2016/2017" = "firebrick")) +
+  #geom_point(alpha = 0.3) +
+  geom_line(data = plot_data, aes(x = day_of_season, y = predicted_temp), size = 1) +
+  scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May')) +
+  labs(x = "Month", y = "Mean Temperature (°C)",
+       title = "Modeled Temperature Trends Across Calving Seasons") +
+  theme_minimal()
 
 ```
 
