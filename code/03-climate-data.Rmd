@@ -76,87 +76,9 @@ ggplot(daily_data) + geom_smooth(aes(x = j_date, y = precip_avg, colour = factor
 
 ```
 
-Working on a GAMM to take a look at the differences between years
+Fitting a gamm to this data to investigate changes between years. Focus on 2023/2024 calving season where we observed abnormal antler growth timing.
 
-```{r gamm tries}
-# mutate some variables to date format and create a column to filter to winter data
-daily_data <- daily_data %>%
-  mutate(date = as.Date(date),  # Ensure 'date' is in Date format
-         year = year(date),
-         month = month(date),
-         day = day(date),
-         j_date = yday(date),  # Day of the year
-         winter = ifelse(month %in% c(11:12, 1:5), "winter", "summer"))  # Define winter
-
-winter_data <- daily_data %>% filter(winter == "winter") %>% 
-  mutate(j_date_shifted = ifelse(month >= 11, j_date - 304, j_date + 61)) %>% 
-  filter(!is.na(temp_avg))
-
-# Fit a GAMM with a smooth term for j_date and a random effect for year
-gamm_model <- gamm(
-  temp_avg ~ s(j_date, bs = "cc") + s(year, k = 5),
-  correlation = corARMA(form = ~ j_date | year, p = 1, q = 1),  # ARMA(1,1) structure
-  data = winter_data
-)
-
-# Summary of the model
-summary(gamm_model$gam)
-
-plot(gamm_model$gam, shade = TRUE, pages = 1)
-```
-
-
-
-
-
-Direct comparisons between specific years.
-```{r predicted value tests}
-# Predict temperatures for each year
-predictions <- predict(gamm_model$gam, newdata = winter_data, type = "response", se.fit = TRUE)
-
-# Add predicted values to the data
-winter_data$predicted_temp <- predictions$fit
-winter_data$se <- predictions$se.fit
-
-# Compare predicted temperatures for two specific years
-year1 <- 2017
-year2 <- 2023
-
-temp_year1 <- winter_data %>% 
-  filter(year == year1) %>% 
-  filter(month %in% c(3:5)) %>% 
-  pull(predicted_temp)
-temp_year2 <- winter_data %>% 
-  filter(year == year2) %>% 
-  filter(month %in% c(3:5)) %>%
-  pull(predicted_temp)
-
-# Perform a t-test to compare
-t.test(temp_year1, temp_year2)
-
-# Highlight specific years
-highlight_years <- c(2017, 2023)
-winter_data_highlight <- winter_data %>% filter(year %in% highlight_years)
-
-# Plot with highlighted years
-ggplot(winter_data, aes(x = j_date_shifted, y = predicted_temp, group = year)) +
-  geom_line(color = "gray", alpha = 0.5) +  # All years in gray
-  geom_line(data = winter_data_highlight, aes(color = as.factor(year)), size = 1.2) +  # Highlighted years
-  scale_x_continuous(breaks = x_breaks, labels = x_labels) +
-  labs(
-    title = "Predicted Winter Temperatures (November to May)",
-    x = "Month",
-    y = "Predicted Temperature",
-    color = "Year"
-  ) +
-  theme_minimal()
-```
-Using a simple t-test there is a significant difference in predicted temperature from the first year we did field work and the year we observed early antler growth.
-
-
-start fresh
-
-```{r data prep}
+```{r gamm data prep}
 # Load the dataset (Ensure the file path is correct)
 calving_season_data <- read.csv("twillingate_weather.csv")
 
@@ -196,7 +118,7 @@ calving_season_daily <- calving_season_daily %>%
 
 
 Fit a gamm model with an interaction between year (calving_season) and time throughout the winter (day_of_season, count of days starting nov 1 to may 31)
-```{r Gamm temp and precip}
+```{r Gamm temp}
 # Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
 gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
                   data = calving_season_daily, 
@@ -206,14 +128,17 @@ gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt +
 
 # Summary of the model
 summary(gam_model$gam)
+```
 
-# still some autocorrelation
-acf(resid(gamm_model$lme), lag.max = 36, main = "ACF")
-pacf(resid(gamm_model$lme), lag.max = 36, main = "pACF")
 
+```{r visualizations}
 # Post-hoc test to compare smooth trends across calving seasons
-#difference_smooths(gam_model$gam, partial_match = TRUE, select = "s(day_of_season):calving_season2023/2024")
-
+sm_diff <- difference_smooths(gam_model$gam, select = "s(day_of_season)", ci = 0.95)
+sm_diff <- sm_diff %>% 
+  filter(.level_1 == "2023/2024" | .level_2 == "2023/2024") %>% #only relevant comparisons
+  filter(!.level_1 %in% c("2019/2020", "2020/2021") & !.level_2 %in% c("2019/2020", "2020/2021")) %>% 
+  mutate(colour_code = )
+draw(sm_diff)
 # Visualization of modeled temperature trends across calving seasons
 plot_data <- expand.grid(
   day_of_season = seq(1:212),
@@ -226,7 +151,7 @@ plot_data <- plot_data %>%
   filter(!calving_season %in% c("2019/2020", "2020/2021"))
 
 ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
-  scale_color_manual(values = c("2023/2024" = "darkcyan", "2022/2023" = "pink", "2021/2022" = "salmon", "2018/2019" = "coral", "2017/2018" = "tomato", "2016/2017" = "firebrick")) +
+  #scale_color_manual(values = c("2023/2024" = "darkcyan", "2022/2023" = "pink", "2021/2022" = "salmon", "2018/2019" = "coral", "2017/2018" = "tomato", "2016/2017" = "firebrick")) +
   #geom_point(alpha = 0.3) +
   geom_line(data = plot_data, aes(x = day_of_season, y = predicted_temp), size = 1) +
   scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May')) +
@@ -234,5 +159,73 @@ ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calvi
        title = "Modeled Temperature Trends Across Calving Seasons") +
   theme_minimal()
 
+```
+
+thoughts:
+
+all estimates are negative when compared to the abnormal year, indicating that year was warmer. However, the two more recent years (2021/2022, 2022/2023) were not significantly cooler. However they are cooler from januiary to the beginning of may like the other years.
+
+There's some interpretation for the diff plots as well, based on the time of year and when the abnormal year is warmer or cooler. Specific pairwise comparisons to try to find the common ground for years with normal growth and the year without. This would need to be reported cautiously though as we only have one year of abnormal data. I have also excluded the two years we don't have observational data from since we don't know what happened those years.
+
+Maybe look into changes in habitat selection and variability in temperature.
+these are too coarse at the mean level maybe, should do daily variation (max-min temp? or just sd)
+
+```{r variability}
+library(lme4)
+
+# Calculate variability metrics for each winter
+winter_variability <- twillingate %>%
+  filter(year %in% c(2016:2024)) %>% 
+  filter(month %in% c(11:12, 1:5)) %>%  # Filter for winter months
+  group_by(year, month, day) %>%
+  summarise(
+    mean_temp = mean(temp, na.rm = TRUE),
+    sd_temp = sd(temp, na.rm = TRUE),  # Standard deviation
+    range_temp = max(temp, na.rm = TRUE) - min(temp,na.rm = TRUE),  # Range
+    iqr_temp = IQR(temp, na.rm = TRUE)  # Interquartile range
+  )
+
+# Line plot of standard deviation over time, visualization is janky
+#broken
+ggplot(winter_variability, aes(x = month, y = sd_temp, group = as.factor(year), color = as.factor(year))) +
+  geom_boxplot() +
+  labs(
+    title = "Standard Deviation of Winter Temperatures Over Time",
+    x = "Month",
+    y = "Standard Deviation"
+  ) +
+  theme_minimal()
+```
+
+variance tests. Levene test is an assessment of the homogeneity of variance, but is basically an ANOVA on the residuals. There's no posthoc test, so I'll pull out the residuals and use those to test differences.
+```{r variance test}
+library(car)
+leveneTest(mean_temp ~ as.factor(year), winter_variability, center=mean) # sig
+hist(winter_variability$mean_temp)
+
+#trying for a post-hoc group comparison since there is not homogeneity of variance
+#but I don't think this is the best way to test this, so maybe a gamm with sd as response
+winter_variability <- winter_variability %>% 
+  group_by(year) %>% 
+  mutate(dat.mean = ifelse(mean_temp, mean(mean_temp, na.rm=TRUE), ifelse(is.na(dat), NA)))
+
+#calculate residuals from the winter mean temperature
+winter_variability$dat.res<-abs(winter_variability$mean_temp-winter_variability$dat.mean)
+
+levene.dat.aov<-aov(dat.res ~ as.factor(year) + as.factor(month), winter_variability)
+summary(levene.dat.aov)
+TukeyHSD(levene.dat.aov)
+
+#but I don't think this is the best way to test this, so maybe a gamm with sd as response
+```
+
+
+maybe is we model sd?
+
+model not working right now....
+```{r gam of variability}
+variance_model <- gam(sd_temp ~ s(year) + s(month, by = year), data = winter_variability, method = "REML")
+summary(variance_model)
+plot(variance_model, shade = TRUE)
 ```
 
