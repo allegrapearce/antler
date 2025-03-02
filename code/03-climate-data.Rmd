@@ -167,7 +167,10 @@ all estimates are negative when compared to the abnormal year, indicating that y
 
 There's some interpretation for the diff plots as well, based on the time of year and when the abnormal year is warmer or cooler. Specific pairwise comparisons to try to find the common ground for years with normal growth and the year without. This would need to be reported cautiously though as we only have one year of abnormal data. I have also excluded the two years we don't have observational data from since we don't know what happened those years.
 
-Maybe look into changes in habitat selection and variability in temperature.
+Maybe look into changes in habitat selection and variability in temperature, or just habitat selection and average temperature?
+
+Trying to add variance to the story.
+I think the final piece of this that we could add is about the variability in temperature. Is it an absolute temperature that triggers antler loss and growth, or do fluctuating temperatures interrupt this mechanistic pathway either with confusing singnals/cues or through stress.
 these are too coarse at the mean level maybe, should do daily variation (max-min temp? or just sd)
 
 ```{r variability}
@@ -219,10 +222,11 @@ TukeyHSD(levene.dat.aov)
 #but I don't think this is the best way to test this, so maybe a gamm with sd as response
 ```
 
+maybe we model sd with a Gamm? GAM model not working right now.... and idk why
 
-maybe is we model sd?
+is this where we do a DHGLMM??????
 
-model not working right now....
+Could also do a simpler analysis with a coefficient of variation by day and month for temperatures and see if they vary by year or month with an anova/mixed model.
 ```{r gam of variability}
 variance_model <- gam(sd_temp ~ s(year) + s(month, by = year), data = winter_variability, method = "REML")
 summary(variance_model)
