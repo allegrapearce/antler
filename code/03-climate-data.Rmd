@@ -136,8 +136,7 @@ summary(gam_model$gam)
 sm_diff <- difference_smooths(gam_model$gam, select = "s(day_of_season)", ci = 0.95)
 sm_diff <- sm_diff %>% 
   filter(.level_1 == "2023/2024" | .level_2 == "2023/2024") %>% #only relevant comparisons
-  filter(!.level_1 %in% c("2019/2020", "2020/2021") & !.level_2 %in% c("2019/2020", "2020/2021")) %>% 
-  mutate(colour_code = )
+  filter(!.level_1 %in% c("2019/2020", "2020/2021") & !.level_2 %in% c("2019/2020", "2020/2021")) #maybe colour code the years as sig or not?
 draw(sm_diff)
 # Visualization of modeled temperature trends across calving seasons
 plot_data <- expand.grid(
