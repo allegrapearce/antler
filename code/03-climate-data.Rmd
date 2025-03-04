@@ -20,6 +20,8 @@ twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-
 #write.csv(twillingate, "twillingate_weather.csv")
 ```
 
+
+## Data exploration
 visualize the weather changes per year
 ```{r data prep, include = FALSE}
 library(tidyverse)
@@ -76,6 +78,8 @@ ggplot(daily_data) + geom_smooth(aes(x = j_date, y = precip_avg, colour = factor
 
 ```
 
+
+## Gamm Analysis
 Fitting a gamm to this data to investigate changes between years. Focus on 2023/2024 calving season where we observed abnormal antler growth timing.
 
 ```{r gamm data prep}
@@ -92,7 +96,7 @@ calving_season_data$calving_season <- ifelse(calving_season_data$month >= 11,
 
 # Convert calving season to a factor and set 2022/2023 as the reference level
 calving_season_data$calving_season <- factor(calving_season_data$calving_season, 
-                                             levels = c("2023/2024", sort(unique(calving_season_data$calving_season[calving_season_data$calving_season != "2023/2024"]))))
+                                             levels = c("2023/2024", sort(unique(calving_season_data$calving_season[calving_season_data$calving_season != "2023/2024"]), decreasing = T)))
 
 # Filter for relevant months (Nov–May)
 calving_season_data <- subset(calving_season_data, month %in% c(11, 12, 1, 2, 3, 4, 5))
@@ -114,9 +118,21 @@ calving_season_daily <- calving_season_daily %>%
   mutate(day_of_season = row_number()) %>%
   ungroup()
 
+#create a trimmed dataset for a more targetted model
+calving_season_daily_trim <- calving_season_daily %>% 
+  mutate(month = format(date, "%m")) %>% 
+  filter(month %in% c("01","02","03","04")) 
+
+# Create day of season variable
+calving_season_daily_trim <- calving_season_daily_trim %>%
+  group_by(calving_season) %>%
+  arrange(date) %>%
+  mutate(day_of_season = row_number()) %>% #now 1 is january 1st
+  ungroup()
+
 ```
 
-
+### Gamm for Winter months (November to end of May)
 Fit a gamm model with an interaction between year (calving_season) and time throughout the winter (day_of_season, count of days starting nov 1 to may 31)
 ```{r Gamm temp}
 # Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
@@ -130,7 +146,9 @@ gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt +
 summary(gam_model$gam)
 ```
 
+#### Gamm visualizations
 
+Most years are significantly cooler than abnormal year (coloured red), but specifically over the mid winter months and early spring (jan to end of april) this year is warmer. It's cooler earlier in the winter/late fall though.
 ```{r visualizations}
 # Post-hoc test to compare smooth trends across calving seasons
 sm_diff <- difference_smooths(gam_model$gam, select = "s(day_of_season)", ci = 0.95)
@@ -149,8 +167,8 @@ plot_data <- plot_data %>%
            predict(gam_model$gam, newdata = plot_data, type = "response")) %>% 
   filter(!calving_season %in% c("2019/2020", "2020/2021"))
 
-ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
-  #scale_color_manual(values = c("2023/2024" = "darkcyan", "2022/2023" = "pink", "2021/2022" = "salmon", "2018/2019" = "coral", "2017/2018" = "tomato", "2016/2017" = "firebrick")) +
+gamm_plot <- ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
+  scale_color_manual(values = c("2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2")) +
   #geom_point(alpha = 0.3) +
   geom_line(data = plot_data, aes(x = day_of_season, y = predicted_temp), size = 1) +
   scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May')) +
@@ -158,17 +176,79 @@ ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calvi
        title = "Modeled Temperature Trends Across Calving Seasons") +
   theme_minimal()
 
+ggsave('../plots/gamm_plot_all_winter.png',
+       gamm_plot,
+       width = 10,
+       height = 7,
+       dpi = 320
+    )
+
 ```
 
-thoughts:
+### Narrower date window (January to end of April)
+If we narrow the window to only january-april? These are the months that appear warmer from the first gamm.
+All are significantly cooler than abnormal year in this time period.
 
-all estimates are negative when compared to the abnormal year, indicating that year was warmer. However, the two more recent years (2021/2022, 2022/2023) were not significantly cooler. However they are cooler from januiary to the beginning of may like the other years.
+Day of season has been changed to a count that starts January 1st.
+```{r targeted gamm}
+# Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
+gam_model_trim <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
+                  data = calving_season_daily_trim, 
+                  family = gaussian(), 
+                  correlation = corAR1(form = ~ day_of_season | calving_season), 
+                  method = "REML")
+
+# Summary of the model
+summary(gam_model_trim$gam)
+```
+
+
+#### Visualizations of trimmed gamm. 
+The abnormal year is almost linear over this time period. I'm not sure we want to use this at all but now it exists.
+```{r trimm gamm visuals}
+# Post-hoc test to compare smooth trends across calving seasons
+sm_diff_trim <- difference_smooths(gam_model_trim$gam, select = "s(day_of_season)", ci = 0.95)
+sm_diff_trim <- sm_diff_trim %>% 
+  filter(.level_1 == "2023/2024" | .level_2 == "2023/2024") %>% #only relevant comparisons
+  filter(!.level_1 %in% c("2019/2020", "2020/2021") & !.level_2 %in% c("2019/2020", "2020/2021")) #maybe colour code the years as sig or not?
+draw(sm_diff_trim)
+# Visualization of modeled temperature trends across calving seasons
+plot_data_trim <- expand.grid(
+  day_of_season = seq(1:130),
+  calving_season = unique(calving_season_daily_trim$calving_season),
+  precip_amt = mean(calving_season_daily_trim$precip_amt, na.rm = TRUE))
+
+plot_data_trim <- plot_data_trim %>% 
+  mutate(predicted_temp = 
+           predict(gam_model_trim$gam, newdata = plot_data_trim, type = "response")) %>% 
+  filter(!calving_season %in% c("2019/2020", "2020/2021"))
+
+gamm_plot_trim <- ggplot(calving_season_daily_trim, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
+  scale_color_manual(values = c("2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2")) +
+  #geom_point(alpha = 0.3) +
+  geom_line(data = plot_data_trim, aes(x = day_of_season, y = predicted_temp), size = 1) +
+  scale_x_continuous(breaks = c(0, 31, 59, 90, 120), labels = c( 'Jan', 'Feb', 'Mar', 'Apr', 'May')) +
+  labs(x = "Month", y = "Mean Temperature (°C)",
+       title = "Modeled Temperature Trends Across Calving Seasons") +
+  theme_minimal()
+
+ggsave('../plots/gamm_plot_trimmed.png',
+       gamm_plot_trim,
+       width = 10,
+       height = 7,
+       dpi = 320
+    )
+```
+
+### Thoughts and Interpretation:
+
+all estimates are negative when compared to the abnormal year, indicating that year was warmer. However, the two more recent years (2021/2022, 2022/2023) were not significantly cooler (until using the trimmed date window). However they are cooler from January to the beginning of May like the other years. This narrows down the time window for the cue for early casting and growth.
 
 There's some interpretation for the diff plots as well, based on the time of year and when the abnormal year is warmer or cooler. Specific pairwise comparisons to try to find the common ground for years with normal growth and the year without. This would need to be reported cautiously though as we only have one year of abnormal data. I have also excluded the two years we don't have observational data from since we don't know what happened those years.
 
-Maybe look into changes in habitat selection and variability in temperature, or just habitat selection and average temperature?
+Maybe look into changes in habitat selection and variability in temperature, or just stick with average daily temperature?
 
-Trying to add variance to the story.
+### Trying to add variance to the story?
 I think the final piece of this that we could add is about the variability in temperature. Is it an absolute temperature that triggers antler loss and growth, or do fluctuating temperatures interrupt this mechanistic pathway either with confusing singnals/cues or through stress.
 these are too coarse at the mean level maybe, should do daily variation (max-min temp? or just sd)
 
