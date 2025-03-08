@@ -121,13 +121,13 @@ calving_season_daily <- calving_season_daily %>%
 #create a trimmed dataset for a more targetted model
 calving_season_daily_trim <- calving_season_daily %>% 
   mutate(month = format(date, "%m")) %>% 
-  filter(month %in% c("01","02","03","04")) 
+  filter(month %in% c("02","03","04"))  
 
 # Create day of season variable
 calving_season_daily_trim <- calving_season_daily_trim %>%
   group_by(calving_season) %>%
   arrange(date) %>%
-  mutate(day_of_season = row_number()) %>% #now 1 is january 1st
+  mutate(day_of_season = row_number()) %>% #now 1 is February 1st
   ungroup()
 
 ```
@@ -136,7 +136,13 @@ calving_season_daily_trim <- calving_season_daily_trim %>%
 Fit a gamm model with an interaction between year (calving_season) and time throughout the winter (day_of_season, count of days starting nov 1 to may 31)
 ```{r Gamm temp}
 # Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
-gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
+gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + calving_season, 
+                  data = calving_season_daily, 
+                  family = gaussian(), 
+                  correlation = corAR1(form = ~ day_of_season | calving_season), 
+                  method = "REML")
+
+gam_model_2 <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
                   data = calving_season_daily, 
                   family = gaussian(), 
                   correlation = corAR1(form = ~ day_of_season | calving_season), 
@@ -144,6 +150,7 @@ gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt +
 
 # Summary of the model
 summary(gam_model$gam)
+summary(gam_model_2$gam)
 ```
 
 #### Gamm visualizations
@@ -176,6 +183,7 @@ gamm_plot <- ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, 
        title = "Modeled Temperature Trends Across Calving Seasons") +
   theme_minimal()
 
+gamm_plot
 ggsave('../plots/gamm_plot_all_winter.png',
        gamm_plot,
        width = 10,
@@ -192,7 +200,7 @@ All are significantly cooler than abnormal year in this time period.
 Day of season has been changed to a count that starts January 1st.
 ```{r targeted gamm}
 # Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
-gam_model_trim <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
+gam_model_trim <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + calving_season, 
                   data = calving_season_daily_trim, 
                   family = gaussian(), 
                   correlation = corAR1(form = ~ day_of_season | calving_season), 
@@ -214,7 +222,7 @@ sm_diff_trim <- sm_diff_trim %>%
 draw(sm_diff_trim)
 # Visualization of modeled temperature trends across calving seasons
 plot_data_trim <- expand.grid(
-  day_of_season = seq(1:130),
+  day_of_season = seq(1:90),
   calving_season = unique(calving_season_daily_trim$calving_season),
   precip_amt = mean(calving_season_daily_trim$precip_amt, na.rm = TRUE))
 
@@ -227,10 +235,12 @@ gamm_plot_trim <- ggplot(calving_season_daily_trim, aes(x = day_of_season, y = m
   scale_color_manual(values = c("2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2")) +
   #geom_point(alpha = 0.3) +
   geom_line(data = plot_data_trim, aes(x = day_of_season, y = predicted_temp), size = 1) +
-  scale_x_continuous(breaks = c(0, 31, 59, 90, 120), labels = c( 'Jan', 'Feb', 'Mar', 'Apr', 'May')) +
+  scale_x_continuous(breaks = c(0, 28, 59, 89), labels = c( 'Feb', 'Mar', 'Apr', 'May')) +
   labs(x = "Month", y = "Mean Temperature (°C)",
        title = "Modeled Temperature Trends Across Calving Seasons") +
   theme_minimal()
+
+gamm_plot_trim
 
 ggsave('../plots/gamm_plot_trimmed.png',
        gamm_plot_trim,
