@@ -155,7 +155,7 @@ summary(gam_model_2$gam)
 
 #### Gamm visualizations
 
-Most years are significantly cooler than abnormal year (coloured red), but specifically over the mid winter months and early spring (jan to end of april) this year is warmer. It's cooler earlier in the winter/late fall though.
+Most years are significantly cooler than abnormal year (coloured red), but specifically over the mid winter months and early spring (feb to end of april) this year is warmer. It's cooler earlier in the winter/late fall though.
 ```{r visualizations}
 # Post-hoc test to compare smooth trends across calving seasons
 sm_diff <- difference_smooths(gam_model$gam, select = "s(day_of_season)", ci = 0.95)
@@ -193,11 +193,11 @@ ggsave('../plots/gamm_plot_all_winter.png',
 
 ```
 
-### Narrower date window (January to end of April)
-If we narrow the window to only january-april? These are the months that appear warmer from the first gamm.
+### Narrower date window (Feb to end of April)
+If we narrow the window to only february-april? These are the months that appear warmer from the first gamm.
 All are significantly cooler than abnormal year in this time period.
 
-Day of season has been changed to a count that starts January 1st.
+Day of season has been changed to a count that starts February 1st.
 ```{r targeted gamm}
 # Fit a Generalized Additive Mixed Model (GAMM) with AR(1) autocorrelation within calving season
 gam_model_trim <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + calving_season, 
