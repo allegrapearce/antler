@@ -1,17 +1,14 @@
 ---
-title: "Climate Analysis"
+title: "Temperature Analysis"
 output: html_notebook
 ---
 
-R download climate data from ECCC (for antler paper)
+R download climate data from ECCC
 
-Need data from 2016-2024 for Twillingate AUT (Station ID = 7083, Climate ID = 8404025), hourly/daily.monthly data available
-note: Twillingate station is not in use (was in the 1960s)
+Need data from 2016-2024 for Twillingate AUT (Station ID = 7083, Climate ID = 8404025), hourly/daily/monthly data available
+note: Twillingate station (a separate station from Twilingate AUT) is not in use (was in the 1960s)
 
-janky documentation for the API https://drive.google.com/drive/folders/1WJCDEU34c60IfOnG4rv5EPZ4IhhW9vZH
-Or use weathercan package from ropenSci
-
-Do not need to run this everytime.
+To gather the publicly available weather data
 ```{r twillingate data, eval = false}
 library(weathercan)
 stations_dl()
@@ -29,53 +26,9 @@ library(mgcv)
 library(ggplot2)
 library(nlme)
 library(gratia)
+library(flextable)
 
 twillingate <- read.csv('../data/twillingate_weather.csv')
-
-monthly_data<-twillingate %>% 
-  select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
-  group_by(year, month) %>% 
-  summarize(precip_avg = mean(precip_amt, na.rm = F), precip_max = max(precip_amt, na.rm = F), precip_min = min(precip_amt, na.rm = F), temp_avg = mean(temp, na.rm = F), temp_max = max(temp, na.rm = F), temp_min = min(temp, na.rm = F), .groups = "drop") %>% 
-  mutate(date = with(., sprintf("%d-%02d", year, month)), time =`year` - 2024, month = as.integer(month), year = as.integer(year)) %>% #not in date format...
-  filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
-
-#There is probably a better way to apply this to all these columns, mapply?
-#add time as a trend variable
-daily_data <- twillingate %>% 
-  select(c(12:17,21,23,25,27,28,33,35,37)) %>% 
-  group_by(year, month, day) %>% 
-  summarize(precip_avg = mean(precip_amt, na.rm = F), precip_max = max(precip_amt, na.rm = F), precip_min = min(precip_amt, na.rm = F), temp_avg = mean(temp, na.rm = F), temp_max = max(temp, na.rm = F), temp_min = min(temp, na.rm = F), .groups = "drop") %>% 
-  mutate(date = as.Date(with(., paste(year,month,day, sep = '-'))), j_date = as.numeric(format(date, "%j")), time =`year` - 2024, month = as.integer(month), day = as.integer(day), year = as.integer(year)) %>% 
-  filter_if(~is.numeric(.), all_vars(!is.infinite(.)))
-```
-
-
-
-```{r monthly weather}
-ggplot(monthly_data, aes(as.factor(month), temp_avg, color = year)) + geom_point()
-
-ggplot(monthly_data, aes(x = date)) + geom_line(aes(y = temp_avg, group = 1)) + geom_line(aes(y = temp_max, group = 1, colour = "red")) + geom_line(aes(y = temp_min, group = 1, colour = "blue"))
-
-#all years on same axes, monthly data
-ggplot(monthly_data) + geom_line(aes(x = month, y = temp_avg, colour = factor(year))) +
-  scale_x_continuous(breaks = 1:12, labels = month.abb, minor_breaks = NULL) +
-  labs(colour = "Year", y = "Average Monthly Temperature", x = "Month") + scale_color_brewer(palette="RdBu", direction=-1)
-```
-
-
-```{r daily weather data}
-#plot avg daily temp per year and look for differences
-#this is the data we want but it's very hard to compare all the years at once with daily data
-ggplot(daily_data) + geom_line(aes(x = j_date, y = temp_avg, colour = factor(year))) + scale_color_brewer(palette="RdBu", direction=-1) + scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
-
-#Do I need to more appropriately smooth this? 
-ggplot(daily_data) + geom_smooth(aes(x = j_date, y = temp_avg, colour = factor(year)), se = F) + scale_color_brewer(palette="RdBu", direction=-1) + scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Temperature", x = "Julian Calendar Day")
-
-#2024 has really low precipitation as well as higher temp but 2021 only has higher temp
-ggplot(daily_data) + geom_smooth(aes(x = j_date, y = precip_avg, colour = factor(year)), se = F) + scale_color_brewer(palette="RdBu", direction=-1) + scale_x_continuous(breaks = seq(1, 365, by = 30)) + labs(colour = "Year", y = "Average Daily Precipitation", x = "Julian Calendar Day")
-
-#facet by year and look at october to calving or jan to calving, 
-
 ```
 
 
@@ -142,15 +95,8 @@ gam_model <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + calving_seas
                   correlation = corAR1(form = ~ day_of_season | calving_season), 
                   method = "REML")
 
-gam_model_2 <- gamm(mean_temp ~ s(day_of_season, by=calving_season) + precip_amt + calving_season, 
-                  data = calving_season_daily, 
-                  family = gaussian(), 
-                  correlation = corAR1(form = ~ day_of_season | calving_season), 
-                  method = "REML")
-
 # Summary of the model
 summary(gam_model$gam)
-summary(gam_model_2$gam)
 ```
 
 #### Gamm visualizations
@@ -175,22 +121,29 @@ plot_data <- plot_data %>%
   filter(!calving_season %in% c("2019/2020", "2020/2021"))
 
 gamm_plot <- ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
-  scale_color_manual(values = c("2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2")) +
+  scale_color_manual(values = c("2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2"),  name = "Calving Season") +
   #geom_point(alpha = 0.3) +
   geom_line(data = plot_data, aes(x = day_of_season, y = predicted_temp), size = 1) +
-  scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May')) +
-  labs(x = "Month", y = "Mean Temperature (°C)",
-       title = "Modeled Temperature Trends Across Calving Seasons") +
-  theme_minimal()
+  scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M')) +
+  labs(x = "Month", y = "Mean Temperature (°C)", ) +
+  theme_minimal(base_size = 24)
 
 gamm_plot
 ggsave('../plots/gamm_plot_all_winter.png',
        gamm_plot,
        width = 10,
-       height = 7,
+       height = 5,
        dpi = 320
     )
 
+```
+
+
+```{r summary table for publication}
+library(flextable)
+
+table_s2 <- as_flextable(gam_model$gam)
+save_as_docx(table_s2, path = "../plots/table_s2.docx")
 ```
 
 ### Narrower date window (Feb to end of April)
@@ -250,75 +203,9 @@ ggsave('../plots/gamm_plot_trimmed.png',
     )
 ```
 
-### Thoughts and Interpretation:
+```{r gamm table trimmed}
 
-all estimates are negative when compared to the abnormal year, indicating that year was warmer. However, the two more recent years (2021/2022, 2022/2023) were not significantly cooler (until using the trimmed date window). However they are cooler from January to the beginning of May like the other years. This narrows down the time window for the cue for early casting and growth.
-
-There's some interpretation for the diff plots as well, based on the time of year and when the abnormal year is warmer or cooler. Specific pairwise comparisons to try to find the common ground for years with normal growth and the year without. This would need to be reported cautiously though as we only have one year of abnormal data. I have also excluded the two years we don't have observational data from since we don't know what happened those years.
-
-Maybe look into changes in habitat selection and variability in temperature, or just stick with average daily temperature?
-
-### Trying to add variance to the story?
-I think the final piece of this that we could add is about the variability in temperature. Is it an absolute temperature that triggers antler loss and growth, or do fluctuating temperatures interrupt this mechanistic pathway either with confusing singnals/cues or through stress.
-these are too coarse at the mean level maybe, should do daily variation (max-min temp? or just sd)
-
-```{r variability}
-library(lme4)
-
-# Calculate variability metrics for each winter
-winter_variability <- twillingate %>%
-  filter(year %in% c(2016:2024)) %>% 
-  filter(month %in% c(11:12, 1:5)) %>%  # Filter for winter months
-  group_by(year, month, day) %>%
-  summarise(
-    mean_temp = mean(temp, na.rm = TRUE),
-    sd_temp = sd(temp, na.rm = TRUE),  # Standard deviation
-    range_temp = max(temp, na.rm = TRUE) - min(temp,na.rm = TRUE),  # Range
-    iqr_temp = IQR(temp, na.rm = TRUE)  # Interquartile range
-  )
-
-# Line plot of standard deviation over time, visualization is janky
-#broken
-ggplot(winter_variability, aes(x = month, y = sd_temp, group = as.factor(year), color = as.factor(year))) +
-  geom_boxplot() +
-  labs(
-    title = "Standard Deviation of Winter Temperatures Over Time",
-    x = "Month",
-    y = "Standard Deviation"
-  ) +
-  theme_minimal()
-```
-
-variance tests. Levene test is an assessment of the homogeneity of variance, but is basically an ANOVA on the residuals. There's no posthoc test, so I'll pull out the residuals and use those to test differences.
-```{r variance test}
-library(car)
-leveneTest(mean_temp ~ as.factor(year), winter_variability, center=mean) # sig
-hist(winter_variability$mean_temp)
-
-#trying for a post-hoc group comparison since there is not homogeneity of variance
-#but I don't think this is the best way to test this, so maybe a gamm with sd as response
-winter_variability <- winter_variability %>% 
-  group_by(year) %>% 
-  mutate(dat.mean = ifelse(mean_temp, mean(mean_temp, na.rm=TRUE), ifelse(is.na(dat), NA)))
-
-#calculate residuals from the winter mean temperature
-winter_variability$dat.res<-abs(winter_variability$mean_temp-winter_variability$dat.mean)
-
-levene.dat.aov<-aov(dat.res ~ as.factor(year) + as.factor(month), winter_variability)
-summary(levene.dat.aov)
-TukeyHSD(levene.dat.aov)
-
-#but I don't think this is the best way to test this, so maybe a gamm with sd as response
-```
-
-maybe we model sd with a Gamm? GAM model not working right now.... and idk why
-
-is this where we do a DHGLMM??????
-
-Could also do a simpler analysis with a coefficient of variation by day and month for temperatures and see if they vary by year or month with an anova/mixed model.
-```{r gam of variability}
-variance_model <- gam(sd_temp ~ s(year) + s(month, by = year), data = winter_variability, method = "REML")
-summary(variance_model)
-plot(variance_model, shade = TRUE)
+table_s3 <- as_flextable(gam_model_trim$gam)
+save_as_docx(table_s3, path = "../plots/table_s3.docx")
 ```
 
