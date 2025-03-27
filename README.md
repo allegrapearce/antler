@@ -1,2 +1,2 @@
 # antler
-Project investigating antler growth timing
+This project details a companion analysis completed to investigate potential causes of abnormal antler phenology. Observations in the field showed adult female caribou growing antlers while pregant, several months earlier than typical antler phenology. Field observations were made in the spring of 2024, data is accessed from the Twilingate AUT environment canada weather station to compare this year to all other years with field observations (starting 2017 to 2024, with the exception of 2020 and 2021).
