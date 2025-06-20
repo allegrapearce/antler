@@ -12,7 +12,7 @@ To gather the publicly available weather data
 ```{r twillingate data, eval = false}
 library(weathercan)
 stations_dl()
-twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2024-12-31")
+twillingate <- weather_dl(station_ids = 7083, start = "2016-01-01", end = "2025-06-15")
 
 #write.csv(twillingate, "twillingate_weather.csv")
 ```
@@ -49,7 +49,7 @@ calving_season_data$calving_season <- ifelse(calving_season_data$month >= 11,
 
 # Convert calving season to a factor and set 2022/2023 as the reference level
 calving_season_data$calving_season <- factor(calving_season_data$calving_season, 
-                                             levels = c("2023/2024", sort(unique(calving_season_data$calving_season[calving_season_data$calving_season != "2023/2024"]), decreasing = T)))
+                                             levels = c("2024/2025", sort(unique(calving_season_data$calving_season[calving_season_data$calving_season != "2024/2025"]), decreasing = T)))
 
 # Filter for relevant months (Nov–May)
 calving_season_data <- subset(calving_season_data, month %in% c(11, 12, 1, 2, 3, 4, 5))
@@ -62,7 +62,7 @@ calving_season_daily <- calving_season_data %>%
             max_temp = max(temp, na.rm = TRUE),
             precip_amt = sum(precip_amt, na.rm = TRUE),
             .groups = 'drop') %>% 
-  filter(!calving_season %in% c("2015/2016", "2024/2025")) #remove incomplete seasons
+  filter(!calving_season %in% c("2015/2016")) #remove incomplete seasons
 
 # Create day of season variable
 calving_season_daily <- calving_season_daily %>%
@@ -107,7 +107,7 @@ Most years are significantly cooler than abnormal year (coloured red), but speci
 sm_diff <- difference_smooths(gam_model$gam, select = "s(day_of_season)", ci = 0.95)
 sm_diff <- sm_diff %>% 
   filter(.level_1 == "2023/2024" | .level_2 == "2023/2024") %>% #only relevant comparisons
-  filter(!.level_1 %in% c("2019/2020", "2020/2021") & !.level_2 %in% c("2019/2020", "2020/2021")) #maybe colour code the years as sig or not?
+  filter(!.level_1 %in% c("2019/2020", "2020/2021" ) & !.level_2 %in% c("2019/2020", "2020/2021")) #maybe colour code the years as sig or not?
 draw(sm_diff)
 # Visualization of modeled temperature trends across calving seasons
 plot_data <- expand.grid(
@@ -121,7 +121,7 @@ plot_data <- plot_data %>%
   filter(!calving_season %in% c("2019/2020", "2020/2021"))
 
 gamm_plot <- ggplot(calving_season_daily, aes(x = day_of_season, y = mean_temp, color = calving_season)) +
-  scale_color_manual(values = c("2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2"),  name = "Calving Season") +
+  scale_color_manual(values = c("2024/2025" = "tomato3", "2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2"),  name = "Calving Season") +
   #geom_point(alpha = 0.3) +
   geom_line(data = plot_data, aes(x = day_of_season, y = predicted_temp), size = 1) +
   scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M')) +

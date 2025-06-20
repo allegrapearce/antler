@@ -1,0 +1,162 @@
+---
+title: "02-ice-data"
+output: html_document
+date: "2025-06-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(tidyverse)
+library(R.utils)
+library(raster)
+library(sf)
+```
+
+## Data Acquisition
+
+Download and access the US National ice cover dataset (NOAA dataset ID G02156) at a 1km resolution. This dataset has daily measurements and covers the northern hemisphere including Fogo island and Newfoundland. 
+
+I'll look at number of days with snow cover over the period of November to May, and the frequency of changes between snow and uncovered?
+
+first let's download the data products adn crop to the island of fogo.
+```{r ice download, message=FALSE, results='hide'}
+ice_dir <- "~/development/phd-repositories/antler/data/icedata"
+years_we_want <- paste("20", seq(from = 16, to = 25), sep = "")
+
+
+for (year in years_we_want) {
+  dir.create(file.path(ice_dir, year), showWarnings = FALSE) #warnings silenced in case directory exists already
+  setwd(file.path(ice_dir, year)) # will only be valid for this chunk in rmd files
+  
+  #download all the files for each year
+  url <- paste("https://noaadata.apps.nsidc.org/NOAA/G02156/GIS/1km/", year, "/", sep = "")
+  page <- read_html(url)
+  files <- page %>% 
+    html_nodes("a") %>% 
+    html_attr("href")
+  
+  #for cropping the whole image to just fogo, only needs to be defined once
+  box_path <- "/Users/legs/development/phd-repositories/antler/data/icedata/fogo_bounding_box.gpkg"
+  fogo_box <- st_read(box_path,
+                      layer = "fogo_box")
+  
+  for(i in 2:length(files)){ 
+    u <- paste(url,files[i], sep="/")  
+    download.file(u,files[i], mode = "wb")}
+  
+  # cleanup and process the files
+  files_in_dir <- list.files(file.path(ice_dir, year)) # list all downloaded files
+  files_df <- data.frame(file_name = files_in_dir) %>% # create a df with file names and months for iteration
+    mutate(file_date = str_extract(file_name, "(?<=ims)\\d{7}"), 
+           date_obj = as.Date(file_date, format = "%Y%j"),
+           month = month(date_obj),
+           month_names = as.character(month(date_obj, label = TRUE))) %>% 
+    filter(month %in% c(1:5, 11:12))
+  
+  #remove files that aren't in the date range we're interested in (i.e., remove june to october)
+  files_to_remove <- list(files_in_dir[!(files_in_dir %in% files_df$file_name)])
+  do.call(unlink, files_to_remove)
+  
+  for (month_name in unique(files_df$month_names)) {
+    this_month <- files_df %>% 
+    filter(month_names == month_name) %>% 
+    pull(file_name)
+    dir.create(file.path(ice_dir, year, month_name), showWarnings = FALSE)
+    
+    for (file in this_month) {
+      gunzip(file.path(ice_dir, year, file), 
+             destname = file.path(ice_dir, year, month_name, paste(gsub("[.]gz$", "", file))), remove = TRUE) 
+      # Note: you could change to remove = TRUE and it will delete the .gz file, but I will manually delete
+    }
+    for (tif_file in list.files(file.path(ice_dir, year, month_name))) {
+      raster <- raster(file.path(ice_dir, year, month_name, tif_file))
+      cropped_raster <- crop(raster, fogo_box)
+      writeRaster(cropped_raster, file.path(ice_dir, year, month_name, tif_file), format = "GTiff", overwrite = TRUE)
+    }
+  }
+}
+```
+
+
+## Data Analysis
+
+stack rasters to get summary stats from them, average days with snow cover, # of freeze/cover and thaw events, date snow cover ends?
+
+From inspecting the tifs: *double check these though*
+4 = snow/ice cover on land
+3 = ice (water)
+2 = land without snow
+1 = water without ice
+
+*below is untested*
+was looking at this link: https://datacarpentry.github.io/r-raster-vector-geospatial/12-time-series-raster.html
+
+potential stats:
+using daily percent covered (number of cells with snow/ total cells) I can isolate days/months with no snow (0.0) or total coverage (1.0)
+how much did each cell fluctuate?
+```{r raster prep}
+
+snow_cover <- data.frame(matrix(ncol=6,nrow=0, dimnames=list(NULL, c("file_name", "avg_snow_cover", "date", "day", "month", "year"))))
+#repeat for each combination (and join) after finalizing stats I want to pull out
+for (this_year in years_we_want) {
+  for (this_month in list.files(path = file.path(ice_dir, this_year))) { #only select months we have data for
+    # read in rasters, stack, and make logical (land covered in snow or not)
+    rastlist <- list.files(path = file.path(ice_dir, this_year, this_month), full.names= T)
+    rstack <- raster::stack(rastlist)
+    logical_stack <- calc(rstack, fun = function(x) {
+      ifelse(x == 4, TRUE, # true is 1, false is 0, NA for water codes
+         ifelse(x == 2, FALSE, NA))
+    })
+    
+    #generate average snow cover on fogo
+    year_month_df <- data.frame(avg_snow_cover = cellStats(logical_stack, stat = 'mean')) %>%  
+      rownames_to_column(., var = "file_name") %>% 
+      mutate(date = as.Date(str_extract(file_name, "(?<=ims)\\d{7}"), format = "%Y%j"), 
+             day = format(date, "%d"), 
+             month = format(date, "%m"), 
+             year = format(date, "%Y"))
+    #and add to larger data.frame
+    snow_cover <- rbind(snow_cover, year_month_df)
+  }
+}
+```
+
+plotting snow cover data
+
+```{r snow plots}
+snow_cover_plot <- snow_cover %>% 
+  mutate(calving_season = as.factor(ifelse(snow_cover$month >= 11,
+                                             paste(snow_cover$year, as.numeric(snow_cover$year) + 1, sep="/"),
+                                             paste(as.numeric(snow_cover$year) - 1, snow_cover$year, sep="/")))) %>% 
+  group_by(calving_season) %>%
+  arrange(date) %>%
+  mutate(day_of_season = row_number()) %>%
+  ungroup() %>% 
+  filter(!calving_season %in% c("2019/2020", "2020/2021", "2015/2016"))
+
+
+ggplot(snow_cover_plot, aes(x = day_of_season, y = avg_snow_cover, color = calving_season)) + 
+  ylim(0, NA) +
+  geom_smooth( se = FALSE) +
+  scale_color_manual(values = c("2024/2025" = "tomato3", "2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2"),  name = "Calving Season") +
+  scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M')) +
+  labs(x = "Month", y = "Mean Snow Cover") +
+  theme_minimal(base_size = 24)
+
+snow_cover_monthly <- snow_cover_plot %>% 
+  group_by(calving_season, month) %>% 
+  summarize( max_cover = max(avg_snow_cover), min_cover = min(avg_snow_cover), avg_cover_monthly = mean(avg_snow_cover)) %>% 
+  arrange(month) %>% 
+  mutate(month_of_season = as.factor(rep(c(3:7,1,2))))
+
+ggplot(snow_cover_monthly, aes(x = month_of_season, y = avg_cover_monthly, color = month_of_season)) + 
+  geom_boxplot() +
+  scale_x_discrete(labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M'))
+
+ggplot(snow_cover_monthly, aes(x = month_of_season, y = avg_cover_monthly, color = calving_season, group = calving_season)) + 
+  geom_line() +
+  scale_x_discrete(labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M'))
+```
+
+
