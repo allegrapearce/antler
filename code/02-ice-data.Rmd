@@ -136,27 +136,24 @@ snow_cover_plot <- snow_cover %>%
   filter(!calving_season %in% c("2019/2020", "2020/2021", "2015/2016"))
 
 
-ggplot(snow_cover_plot, aes(x = day_of_season, y = avg_snow_cover, color = calving_season)) + 
+ice_plot <- ggplot(snow_cover_plot, aes(x = day_of_season, y = avg_snow_cover, color = calving_season)) + 
   ylim(0, NA) +
   geom_smooth( se = FALSE) +
   scale_color_manual(values = c("2024/2025" = "tomato3", "2023/2024" = "tomato", "2022/2023" = "royalblue3", "2021/2022" = "dodgerblue3", "2018/2019" = "cornflowerblue", "2017/2018" = "skyblue2", "2016/2017" = "lightblue2"),  name = "Calving Season") +
   scale_x_continuous(breaks = c(1, 31, 62, 93, 121, 151, 182), labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M')) +
   labs(x = "Month", y = "Mean Snow Cover") +
-  theme_minimal(base_size = 24)
+  theme_minimal(base_size = 24) +
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14))
 
-snow_cover_monthly <- snow_cover_plot %>% 
-  group_by(calving_season, month) %>% 
-  summarize( max_cover = max(avg_snow_cover), min_cover = min(avg_snow_cover), avg_cover_monthly = mean(avg_snow_cover)) %>% 
-  arrange(month) %>% 
-  mutate(month_of_season = as.factor(rep(c(3:7,1,2))))
-
-ggplot(snow_cover_monthly, aes(x = month_of_season, y = avg_cover_monthly, color = month_of_season)) + 
-  geom_boxplot() +
-  scale_x_discrete(labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M'))
-
-ggplot(snow_cover_monthly, aes(x = month_of_season, y = avg_cover_monthly, color = calving_season, group = calving_season)) + 
-  geom_line() +
-  scale_x_discrete(labels = c('N', 'D', 'J', 'F', 'M', 'A', 'M'))
+ggsave('../plots/ice_plot_all_winter_R2.png',
+       ice_plot,
+       width = 8,
+       height = 4.5,
+       dpi = 320
+    )
 ```
 
 
