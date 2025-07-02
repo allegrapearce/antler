@@ -9,9 +9,9 @@ Using data from the Twilingate AUT environment canada weather station, we compar
 
 This readme file was generated on 2025-07-02 by Allegra Love
 
--
+
 #### General information
--
+
 1. Title of dataset: Addled by Antlers Analysis
 
 2. Dataset DOI: NA
@@ -59,9 +59,9 @@ Data analyzed here is from secondary sources, but is contextually paired with fi
 9. Funding information:
 AL was supported by NSERC doctoral fellowship, fieldwork was supported by NSERC discovery (QW).
  
--
+
 #### Sharing/access information
--
+
 1. Licenses/restrictions placed on the dataset: CC-BY 4.0
 
 2. Links to publications that cite or use the dataset: TBD
@@ -76,9 +76,9 @@ United States National Ice Center: U.S. National Ice Center. (2008). IMS Daily N
 
 5. Dataset citation: NA
 
--
+
 #### Folder and file overview
--
+
 1. File List:
 
 [code]: scripts to gather and analyze ice cover data (USNIC) and weather records for Twillingate weather station.
@@ -93,7 +93,7 @@ United States National Ice Center: U.S. National Ice Center. (2008). IMS Daily N
 
 
 #### Methodological information
--
+
 1. Description of methods used for collection/generation of data: data access described in code files.
 
 2. Description of methods used for processing the data: all processing was completed using code provided.
