@@ -5,7 +5,7 @@ This project details a companion analysis completed to investigate potential cau
 During routine fieldwork in the spring of 2024 our field team observed adult female caribou growing antlers while pregant, several months earlier than typical antler phenology. Notably we did not observe individuals with typical phenology that year, suggesting an external cue disrupted regular antler pathways. 
 
 ### Project Description
-Using data from the Twilingate AUT environment canada weather station, we compare the weather during the focal year (with abnormal phenology) to all other years with field observations (starting 2017 to 2024, with the exception of 2020 and 2021). To do this we use a generalized additive mixed model to look at changes in mean temperature between years. Code to access weather data, run the GAMM models and create visualizations in the accompanying article (in review) can be found in code/03-climate-data.Rmd.
+Using data from the Twilingate AUT environment canada weather station and ice cover data from USNIC, we compare the weather during the focal years (with abnormal phenology) to all other years with field observations (starting 2017 to 2025, with the exception of 2020 and 2021). We use field observations from both 2024 and 2025 with abnormal casting phenology, to suggest environmental cues that may have caused this change. To do this we visualize trends in ice cover and average daily temperature across the winters, comparing years with abnormal phenologies to other years with observations.
 
 This readme file was generated on 2025-07-02 by Allegra Love
 
